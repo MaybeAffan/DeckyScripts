@@ -1,0 +1,10 @@
+{
+  "name": "PreLaunch Scripts",
+  "author": "Afan",
+  "flags": [],
+  "publish": {
+    "tags": ["utility", "launcher", "scripts"],
+    "description": "Run a chosen script before launching a Steam game.",
+    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/decky-plugin-template"
+  }
+}
