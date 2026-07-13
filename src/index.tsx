@@ -13,6 +13,7 @@ type Settings = {
   enabled: boolean;
   script_path: string;
   timeout_seconds: number;
+  existing_launch_options: string;
 };
 
 type TestResult = {
@@ -30,6 +31,7 @@ const defaultSettings: Settings = {
   enabled: true,
   script_path: "",
   timeout_seconds: 60,
+  existing_launch_options: "",
 };
 
 const headingStyle = {
@@ -48,6 +50,30 @@ function SectionHeading({ children }: { children: string }) {
       <div style={headingStyle}>{children}</div>
     </PanelSectionRow>
   );
+}
+
+function buildMergedLaunchCommand(runnerCommand: string, existingOptions: string) {
+  if (!runnerCommand) {
+    return "";
+  }
+
+  const original = (existingOptions ?? "").trim();
+  if (!original) {
+    return `${runnerCommand} %command%`;
+  }
+
+  // Steam environment assignments must remain at the front of the command.
+  const environmentPrefix = original.match(
+    /^(?:(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+))\s+)*/,
+  )?.[0] ?? "";
+  const commandPart = original.slice(environmentPrefix.length).trim();
+  const commandWithPlaceholder = commandPart.includes("%command%")
+    ? commandPart
+    : `${commandPart} %command%`.trim();
+
+  return [environmentPrefix.trim(), runnerCommand, commandWithPlaceholder]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function Content() {
@@ -135,13 +161,13 @@ function Content() {
   }
 
   async function copyLaunchCommand() {
-    if (!launchCommand) {
+    if (!mergedLaunchCommand) {
       return;
     }
 
     try {
       const input = document.createElement("textarea");
-      input.value = launchCommand;
+      input.value = mergedLaunchCommand;
       input.setAttribute("readonly", "");
       input.style.position = "fixed";
       input.style.opacity = "0";
@@ -154,7 +180,7 @@ function Content() {
         copied = document.execCommand("copy");
 
         if (!copied && navigator.clipboard) {
-          await navigator.clipboard.writeText(launchCommand);
+          await navigator.clipboard.writeText(mergedLaunchCommand);
           copied = true;
         }
       } finally {
@@ -176,6 +202,10 @@ function Content() {
   }
 
   const busy = isLoading || isSaving || isTesting;
+  const mergedLaunchCommand = buildMergedLaunchCommand(
+    launchCommand,
+    settings.existing_launch_options,
+  );
 
   return (
     <PanelSection>
@@ -244,8 +274,28 @@ function Content() {
       <SectionHeading>Launch Options</SectionHeading>
       <PanelSectionRow>
         <div style={{ fontSize: "12px", lineHeight: "1.4", opacity: "0.8" }}>
-          Paste this into the game's Steam launch options:
+          Paste the game&apos;s current launch options below if it already has any. DeckyScripts
+          creates a merged replacement but does not change Steam&apos;s setting automatically.
         </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <TextField
+          label="Existing launch options"
+          value={settings.existing_launch_options}
+          disabled={busy}
+          bShowClearAction
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setSettings({
+              ...settings,
+              existing_launch_options: event.currentTarget.value,
+            })
+          }
+        />
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={save} disabled={busy}>
+          {isSaving ? "Saving settings..." : "Save existing launch options"}
+        </ButtonItem>
       </PanelSectionRow>
       <PanelSectionRow>
         <div
@@ -259,12 +309,12 @@ function Content() {
             overflowWrap: "anywhere",
           }}
         >
-          {launchCommand || "Loading launch command..."}
+          {mergedLaunchCommand || "Loading launch command..."}
         </div>
       </PanelSectionRow>
       <PanelSectionRow>
-        <ButtonItem layout="below" onClick={copyLaunchCommand} disabled={!launchCommand || isLoading}>
-          Copy launch option
+        <ButtonItem layout="below" onClick={copyLaunchCommand} disabled={!mergedLaunchCommand || isLoading}>
+          Copy merged launch option
         </ButtonItem>
       </PanelSectionRow>
 

@@ -7,6 +7,7 @@ Decky Loader plugin for Steam Deck that runs a local script before a game launch
 - Lets the user set a local `.sh` or `.py` script path.
 - Saves the setting to `/home/deck/.config/prelaunch-scripts/settings.json`.
 - Generates a Steam launch option like `/home/deck/.config/prelaunch-scripts/run %command%`.
+- Merges an optional existing launch option, such as `~/lsfg %command%`, without changing Steam automatically.
 - Runs the script with a timeout, writes `last-run.log`, and still launches the game if the script fails.
 - Stays non-root and never downloads scripts.
 

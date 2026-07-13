@@ -20,6 +20,7 @@ DEFAULT_SETTINGS = {
     "enabled": True,
     "script_path": "",
     "timeout_seconds": 60,
+    "existing_launch_options": "",
 }
 
 
@@ -36,6 +37,9 @@ def normalize_settings(settings):
         "enabled": bool(raw_settings.get("enabled", DEFAULT_SETTINGS["enabled"])),
         "script_path": str(raw_settings.get("script_path", "")).strip(),
         "timeout_seconds": max(1, min(timeout_seconds, MAX_TIMEOUT_SECONDS)),
+        "existing_launch_options": str(
+            raw_settings.get("existing_launch_options", "")
+        ).strip(),
     }
 
 
