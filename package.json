@@ -1,7 +1,7 @@
 {
   "name": "decky-scripts",
   "version": "0.0.1",
-  "description": "Decky Loader plugin for running a local script before launching a Steam game.",
+  "description": "Run user-configured local scripts before launching Steam games.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

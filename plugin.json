@@ -5,6 +5,6 @@
   "flags": [],
   "publish": {
     "tags": ["utility", "launcher", "scripts"],
-    "description": "Run a chosen script before launching a Steam game."
+    "description": "Run user-configured local scripts before launching Steam games."
   }
 }

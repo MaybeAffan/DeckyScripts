@@ -2,7 +2,7 @@
 
 Decky Loader plugin for Steam Deck that executes a user-selected local script before Steam starts a game.
 
-## Runtime Model
+## How It Works
 
 1. DeckyScripts stores its settings in `/home/deck/.config/prelaunch-scripts/settings.json`.
 2. On load, the backend creates `/home/deck/.config/prelaunch-scripts/run`.
