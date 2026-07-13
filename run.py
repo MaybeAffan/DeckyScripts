@@ -1,21 +1,38 @@
-import os
-import sys
 import json
+import os
+import shlex
 import subprocess
-from pathlib import Path
+import sys
 from datetime import datetime
+from pathlib import Path
 
 
 CONFIG_DIR = Path.home() / ".config" / "prelaunch-scripts"
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
 LOG_PATH = CONFIG_DIR / "last-run.log"
-
+MAX_TIMEOUT_SECONDS = 3600
 
 DEFAULT_SETTINGS = {
     "enabled": True,
     "script_path": "",
-    "timeout_seconds": 60
+    "timeout_seconds": 60,
 }
+
+
+def normalize_settings(settings):
+    raw_settings = settings if isinstance(settings, dict) else {}
+
+    timeout_value = raw_settings.get("timeout_seconds", DEFAULT_SETTINGS["timeout_seconds"])
+    try:
+        timeout_seconds = int(timeout_value)
+    except (TypeError, ValueError):
+        timeout_seconds = DEFAULT_SETTINGS["timeout_seconds"]
+
+    return {
+        "enabled": bool(raw_settings.get("enabled", DEFAULT_SETTINGS["enabled"])),
+        "script_path": str(raw_settings.get("script_path", "")).strip(),
+        "timeout_seconds": max(1, min(timeout_seconds, MAX_TIMEOUT_SECONDS)),
+    }
 
 
 def read_settings():
@@ -25,7 +42,7 @@ def read_settings():
     try:
         with open(SETTINGS_PATH, "r", encoding="utf-8") as file:
             data = json.load(file)
-            return {**DEFAULT_SETTINGS, **data}
+            return normalize_settings(data)
     except Exception:
         return DEFAULT_SETTINGS.copy()
 
@@ -37,41 +54,93 @@ def write_log(text):
 
 def build_script_command(script: Path):
     if script.suffix == ".sh":
-        return ["bash", str(script)]
+        return ["/usr/bin/bash", str(script)]
 
     if script.suffix == ".py":
-        return ["python3", str(script)]
+        return [sys.executable, str(script)]
 
     return [str(script)]
 
 
+def format_stream(value):
+    return (value or "").rstrip()
+
+
+def script_environment():
+    environment = os.environ.copy()
+    environment.pop("LD_LIBRARY_PATH", None)
+    environment.pop("LD_PRELOAD", None)
+    return environment
+
+
 def run_prelaunch_script(settings):
     if not settings.get("enabled", True):
-        return "Plugin disabled. Skipped script."
+        return "\n".join([
+            "Plugin disabled. Skipped script.",
+        ])
 
     script_path = settings.get("script_path", "").strip()
+    timeout_seconds = settings.get("timeout_seconds", DEFAULT_SETTINGS["timeout_seconds"])
 
     if not script_path:
-        return "No script path set. Skipped script."
+        return "\n".join([
+            "No script path set. Skipped script.",
+        ])
 
     script = Path(script_path).expanduser()
 
     if not script.exists():
-        return f"Script not found: {script}"
+        return "\n".join([
+            f"Script not found: {script}",
+        ])
 
-    result = subprocess.run(
-        build_script_command(script),
-        capture_output=True,
-        text=True,
-        timeout=int(settings.get("timeout_seconds", 60))
-    )
+    command = build_script_command(script)
+    command_display = " ".join(shlex.quote(part) for part in command)
 
-    return (
-        f"Script: {script}\n"
-        f"Exit code: {result.returncode}\n\n"
-        f"STDOUT:\n{result.stdout}\n\n"
-        f"STDERR:\n{result.stderr}\n"
-    )
+    log_lines = [
+        f"Time: {datetime.now().isoformat(timespec='seconds')}",
+        f"Script: {script}",
+        f"Command: {command_display}",
+        f"Timeout seconds: {timeout_seconds}",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            env=script_environment(),
+        )
+        stdout = format_stream(result.stdout)
+        stderr = format_stream(result.stderr)
+        log_lines.extend([
+            f"Return code: {result.returncode}",
+            "",
+            "STDOUT:",
+            stdout or "(empty)",
+            "",
+            "STDERR:",
+            stderr or "(empty)",
+        ])
+    except subprocess.TimeoutExpired as error:
+        stdout = format_stream(error.stdout)
+        stderr = format_stream(error.stderr)
+        log_lines.extend([
+            f"Timed out after {timeout_seconds} seconds.",
+            "",
+            "STDOUT:",
+            stdout or "(empty)",
+            "",
+            "STDERR:",
+            stderr or "(empty)",
+        ])
+    except Exception as error:
+        log_lines.extend([
+            f"Script failed to run: {error}",
+        ])
+
+    return "\n".join(log_lines)
 
 
 def launch_game(args):
@@ -83,23 +152,26 @@ def launch_game(args):
 
 if __name__ == "__main__":
     original_args = sys.argv[1:]
-    settings = read_settings()
+    settings = normalize_settings(read_settings())
 
     log = [
-        "=== PRELAUNCH SCRIPTS ===",
-        f"Time: {datetime.now().isoformat()}",
+        "=== DECKYSCRIPTS ===",
+        f"Time: {datetime.now().isoformat(timespec='seconds')}",
         f"Args: {original_args}",
-        ""
+        f"Enabled: {settings['enabled']}",
+        f"Script path: {settings['script_path'] or '(not set)'}",
+        f"Timeout seconds: {settings['timeout_seconds']}",
+        "",
     ]
 
     try:
         log.append(run_prelaunch_script(settings))
     except Exception as error:
-        log.append(f"Script failed: {error}")
-
-    try:
-        write_log("\n".join(log))
-    except Exception:
-        pass
+        log.append(f"Unexpected error while running script: {error}")
+    finally:
+        try:
+            write_log("\n".join(log) + "\n")
+        except Exception:
+            pass
 
     launch_game(original_args)

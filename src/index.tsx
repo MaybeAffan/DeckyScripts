@@ -1,4 +1,12 @@
 import { callable, definePlugin, toaster } from "@decky/api";
+import {
+  ButtonItem,
+  PanelSection,
+  PanelSectionRow,
+  SliderField,
+  TextField,
+  ToggleField,
+} from "@decky/ui";
 import { useEffect, useState } from "react";
 
 type Settings = {
@@ -18,150 +26,271 @@ const getLaunchCommand = callable<[], string>("get_launch_command");
 const testScript = callable<[], TestResult>("test_script");
 const getLog = callable<[], string>("get_log");
 
-function Content() {
-  const [settings, setSettings] = useState<Settings>({
-    enabled: true,
-    script_path: "",
-    timeout_seconds: 60,
-  });
+const defaultSettings: Settings = {
+  enabled: true,
+  script_path: "",
+  timeout_seconds: 60,
+};
 
+const headingStyle = {
+  fontSize: "14px",
+  fontWeight: "bold",
+  marginTop: "12px",
+  marginBottom: "6px",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
+  paddingBottom: "3px",
+  color: "white",
+};
+
+function SectionHeading({ children }: { children: string }) {
+  return (
+    <PanelSectionRow>
+      <div style={headingStyle}>{children}</div>
+    </PanelSectionRow>
+  );
+}
+
+function Content() {
+  const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [launchCommand, setLaunchCommand] = useState("");
   const [log, setLog] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function load() {
+    setIsLoading(true);
+
     try {
-      const loadedSettings = await getSettings();
-      const command = await getLaunchCommand();
-      const latestLog = await getLog();
+      const [loadedSettings, command, latestLog] = await Promise.all([
+        getSettings(),
+        getLaunchCommand(),
+        getLog(),
+      ]);
 
       setSettings(loadedSettings);
       setLaunchCommand(command);
       setLog(latestLog);
     } catch (error) {
-      console.error("PreLaunch Scripts load error:", error);
+      console.error("DeckyScripts load error:", error);
+      toaster.toast({
+        title: "DeckyScripts",
+        body: "Could not load the current settings.",
+      });
+    } finally {
+      setIsLoading(false);
     }
   }
 
   async function save() {
+    setIsSaving(true);
+
     try {
       await saveSettings(settings);
+      const [refreshedSettings, command] = await Promise.all([
+        getSettings(),
+        getLaunchCommand(),
+      ]);
 
-      toaster.toast({
-        title: "PreLaunch Scripts",
-        body: "Settings saved.",
-      });
+      setSettings(refreshedSettings);
+      setLaunchCommand(command);
+      toaster.toast({ title: "DeckyScripts", body: "Settings saved." });
     } catch (error) {
       console.error("Save failed:", error);
+      toaster.toast({ title: "Save failed", body: "Check the console for details." });
+    } finally {
+      setIsSaving(false);
     }
   }
 
   async function runTest() {
+    setIsTesting(true);
+
     try {
       await saveSettings(settings);
-
       const result = await testScript();
-      const latestLog = await getLog();
-
-      setLog(latestLog);
-
+      setLog(await getLog());
       toaster.toast({
         title: result.ok ? "Script test passed" : "Script test failed",
         body: result.message,
       });
     } catch (error) {
       console.error("Test failed:", error);
+      toaster.toast({ title: "Test failed", body: "Check the console for details." });
+    } finally {
+      setIsTesting(false);
     }
   }
 
   async function refreshLog() {
-    const latestLog = await getLog();
-    setLog(latestLog);
+    try {
+      setLog(await getLog());
+    } catch (error) {
+      console.error("Failed to refresh log:", error);
+    }
   }
 
+  async function copyLaunchCommand() {
+    if (!launchCommand) {
+      return;
+    }
+
+    try {
+      const input = document.createElement("textarea");
+      input.value = launchCommand;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+
+      let copied = false;
+      try {
+        input.focus({ preventScroll: true });
+        input.select();
+        copied = document.execCommand("copy");
+
+        if (!copied && navigator.clipboard) {
+          await navigator.clipboard.writeText(launchCommand);
+          copied = true;
+        }
+      } finally {
+        document.body.removeChild(input);
+      }
+
+      if (!copied) {
+        throw new Error("Clipboard access was unavailable");
+      }
+
+      toaster.toast({
+        title: "Launch command copied",
+        body: "Paste it into the game's Steam launch options.",
+      });
+    } catch (error) {
+      console.error("Copy failed:", error);
+      toaster.toast({ title: "Copy failed", body: "Clipboard access was unavailable." });
+    }
+  }
+
+  const busy = isLoading || isSaving || isTesting;
+
   return (
-    <div style={{ padding: "12px", display: "flex", flexDirection: "column", gap: "12px" }}>
-      <h2>PreLaunch Scripts DEBUG 3</h2>
+    <PanelSection>
+      <PanelSectionRow>
+        <div style={{ fontSize: "12px", lineHeight: "1.4", opacity: "0.8" }}>
+          Run one local script before a game starts. The game will still launch if the script fails
+          or reaches its timeout.
+        </div>
+      </PanelSectionRow>
 
-      <label style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <input
-          type="checkbox"
+      <SectionHeading>Script</SectionHeading>
+      <PanelSectionRow>
+        <ToggleField
+          label="Enable prelaunch script"
+          description="Only the path shown below is run. No downloads and no root access."
           checked={settings.enabled}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              enabled: event.currentTarget.checked,
-            })
-          }
+          disabled={busy}
+          onChange={(enabled: boolean) => setSettings({ ...settings, enabled })}
         />
-        Enable prelaunch script
-      </label>
-
-      <div>
-        <div>Script path</div>
-        <input
-          style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <TextField
+          label="Script path"
+          description="Use a local .sh or .py script. This path is also written to the log."
           value={settings.script_path}
-          placeholder="/home/deck/Scripts/before-game.sh"
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              script_path: event.currentTarget.value,
-            })
+          disabled={busy}
+          bShowClearAction
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setSettings({ ...settings, script_path: event.currentTarget.value })
           }
         />
-      </div>
-
-      <div>
-        <div>Timeout seconds</div>
-        <input
-          style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
-          type="number"
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <SliderField
+          label="Timeout"
+          description="The game launches even if the script takes too long."
           value={settings.timeout_seconds}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              timeout_seconds: Number(event.currentTarget.value),
-            })
-          }
+          min={1}
+          max={300}
+          step={1}
+          showValue
+          valueSuffix=" seconds"
+          disabled={busy}
+          onChange={(timeout_seconds: number) => setSettings({ ...settings, timeout_seconds })}
         />
-      </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={save}
+          disabled={busy}
+        >
+          {isSaving ? "Saving settings..." : "Save settings"}
+        </ButtonItem>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem
+          layout="below"
+          onClick={runTest}
+          disabled={busy || !settings.script_path.trim()}
+        >
+          {isTesting ? "Testing script..." : "Test script"}
+        </ButtonItem>
+      </PanelSectionRow>
 
-      <button onClick={save}>Save Settings</button>
-      <button onClick={runTest}>Test Script</button>
+      <SectionHeading>Launch Options</SectionHeading>
+      <PanelSectionRow>
+        <div style={{ fontSize: "12px", lineHeight: "1.4", opacity: "0.8" }}>
+          Paste this into the game's Steam launch options:
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <div
+          style={{
+            fontSize: "12px",
+            lineHeight: "1.4",
+            backgroundColor: "rgba(255, 255, 255, 0.1)",
+            padding: "8px",
+            borderRadius: "4px",
+            fontFamily: "monospace",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {launchCommand || "Loading launch command..."}
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={copyLaunchCommand} disabled={!launchCommand || isLoading}>
+          Copy launch option
+        </ButtonItem>
+      </PanelSectionRow>
 
-      <div>
-        <div>Put this in a Steam game&apos;s launch options:</div>
-        <textarea
-          readOnly
-          value={launchCommand}
-          style={{ width: "100%", minHeight: "70px", padding: "8px", boxSizing: "border-box" }}
-        />
-      </div>
-
-      <button onClick={refreshLog}>Refresh Log</button>
-
-      <div>
-        <div>Log</div>
-        <textarea
-          readOnly
-          value={log}
-          placeholder="No log yet."
-          style={{ width: "100%", minHeight: "160px", padding: "8px", boxSizing: "border-box" }}
-        />
-      </div>
-    </div>
+      <SectionHeading>Last Run Log</SectionHeading>
+      <PanelSectionRow>
+        <div style={{ fontSize: "12px", lineHeight: "1.4", opacity: "0.8", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {log || "No script has been run yet."}
+        </div>
+      </PanelSectionRow>
+      <PanelSectionRow>
+        <ButtonItem layout="below" onClick={refreshLog} disabled={isLoading}>
+          Refresh log
+        </ButtonItem>
+      </PanelSectionRow>
+    </PanelSection>
   );
 }
 
-export default definePlugin(() => {
-  return {
-    name: "PreLaunch Scripts",
-    titleView: <div>PreLaunch Scripts</div>,
-    content: <Content />,
-    icon: <div>▶</div>,
-  };
-});
+export default definePlugin(() => ({
+  name: "DeckyScripts",
+  titleView: <div>DeckyScripts</div>,
+  alwaysRender: true,
+  content: <Content />,
+  icon: (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <path d="M6 4.5L16 10L6 15.5V4.5Z" fill="currentColor" />
+    </svg>
+  ),
+}));

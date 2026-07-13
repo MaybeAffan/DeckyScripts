@@ -1,30 +1,30 @@
 {
-  "name": "decky-plugin-template",
+  "name": "decky-scripts",
   "version": "0.0.1",
-  "description": "A template to quickly create decky plugins from scratch, based on TypeScript and webpack",
+  "description": "Decky Loader plugin for running a local script before launching a Steam game.",
   "type": "module",
   "scripts": {
-    "build": "rollup -c",
-    "watch": "rollup -c -w",
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SteamDeckHomebrew/decky-plugin-template.git"
+    "url": "git+https://github.com/MaybeAffan/DeckLaunch-Plugin.git"
   },
   "keywords": [
     "decky",
     "plugin",
-    "plugin-template",
+    "prelaunch",
     "steam-deck",
     "deck"
   ],
-  "author": "You <you@you.tld>",
+  "author": "Afan",
   "license": "BSD-3-Clause",
   "bugs": {
-    "url": "https://github.com/SteamDeckHomebrew/decky-plugin-template/issues"
+    "url": "https://github.com/MaybeAffan/DeckLaunch-Plugin/issues"
   },
-  "homepage": "https://github.com/SteamDeckHomebrew/decky-plugin-template#readme",
+  "homepage": "https://github.com/MaybeAffan/DeckLaunch-Plugin#readme",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.11.0",
